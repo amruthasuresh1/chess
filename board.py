@@ -88,12 +88,17 @@ class Piece:
         """
         return chr(97 + (self.x // 85)) + str(((680 - self.y) // 85))
 
+    def get_colour(self):
+        return self.couleur
 
 class Echiquier:
     """
     Represents a chess board.
     """
     def __init__(self, ecran, echiquier, image):
+        self.make_move = False
+        self.move_coord = ""
+        self.last_move = ""
         self.moteur = chess.Board()  # Motor will validate if the movements are valid.
         self.ecran = ecran
         self.echiquier = echiquier
@@ -130,23 +135,24 @@ class Echiquier:
                        Piece("Pion",     "Blanc", 85 * 6, 85 * 6, 85, self._image(image, (902, 214, 85, 85)), ecran),
                        Piece("Pion",     "Blanc", 85 * 7, 85 * 6, 85, self._image(image, (902, 214, 85, 85)), ecran)]
 
-    def jouer(self):
+    def jouer(self,colour):
         """
         This is where the game loop is located, in which the image of the chess board is refreshed.
         """
-        while True:
+        play = True
+        while play:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     sys.exit(0)
 
                 elif event.type == pygame.MOUSEBUTTONDOWN:
-                    #Mouse click or press
+                    # Mouse click or press
                     if event.button == 1:
                         x, y = event.pos
                         print(x, y)
                         print("self.moteur = ", self.moteur)
-                        print("From position: ", chr(97 + (x // 85)) + str(((680 - y) // 85) +1))
-                        curr_pos = chr(97 + (x // 85)) + str(((680 - y) // 85)+1)
+                        print("From position: ", chr(97 + (x // 85)) + str(((680 - y) // 85) + 1))
+                        curr_pos = chr(97 + (x // 85)) + str(((680 - y) // 85) + 1)
 
 
                 elif event.type == pygame.MOUSEBUTTONUP:
@@ -156,32 +162,69 @@ class Echiquier:
                         print(x, y)
                         # Calculating the final position by dividing with 85 ( side length of square) and taking
                         # the closest integer just below the value by forcing the result to be of int()
-                        x_new = int(x/85) * 85
-                        y_new = int(y/85) * 85
-                        print("To position: ", chr(97 + (x // 85)) + str(((680 - y) // 85) + 1))
+                        x_new = int(x / 85) * 85
+                        y_new = int(y / 85) * 85
+                        # print("To position: ", chr(97 + (x // 85)) + str(((680 - y) // 85) + 1))
                         final_pos = chr(97 + (x // 85)) + str(((680 - y) // 85) + 1)
                         check_move = curr_pos + final_pos
-                        print("check move", check_move)
+                        # print("check move", check_move)
                         new_pos = 0
                         for p in self.pieces:
                             # Get the piece in the given position calculated as curr_pos
-                            if p.case() == curr_pos:
+                            print("p.get_colour()",p.get_colour())
+                            print("get_colour()",colour)
+
+                            if p.case() == curr_pos and p.get_colour()==colour:
                                 valid_moves = self.moteur.generate_legal_moves()
                                 move_made = chess.Move.from_uci(check_move)
-                                make_move = False
+                                self.make_move = False
                                 for k in valid_moves:
                                     print("k =", k)
                                     if k == move_made:
-                                        make_move = True
-                                print("Make move ", make_move)
-                                if make_move:
-                                    print("Going inside loop, make move is ", make_move)
+                                        self.make_move = True
+                                if self.make_move:
                                     p.x = x_new
                                     p.y = y_new
                                     self.moteur.push(move_made)
                                     self.pieces[new_pos] = p
-                            new_pos+= 1
+                                    self.last_move = check_move
+                                    #If the x value is not 3 digits, make it 3 digit by putting a 0 before the value
+                                    # First the x and y values are converted to strings
+                                    x_new_str = str(x_new)
+                                    y_new_str = str(y_new)
+                                    #Puts 0 until the length is 3
+                                    while len(x_new_str)<3:
+                                        x_new_str = "0" + x_new_str
+                                    while len(y_new_str) < 3:
+                                         y_new_str = "0" + x_new_str
+                                    #This is the string which is passed to the server
+                                    self.move_coord = str(x_new_str) + str(y_new_str)
 
+                                    play = False
+                            new_pos += 1
+            self.update_screen()
+
+    def make_auto_move(self, data):
+        print("data =",data)
+        curr_pos = data[0:2]
+        print("curr_pos new",curr_pos)
+        check_move = data[0:4]
+        x_new = int(data[4:7])
+        y_new = int(data[7:10])
+        new_pos = 0
+        for p in self.pieces:
+            # Get the piece in the given position calculated as curr_pos
+            if p.case() == curr_pos:
+                move_made = chess.Move.from_uci(check_move)
+                p.x = x_new
+                p.y = y_new
+                self.moteur.push(move_made)
+                self.pieces[new_pos] = p
+                self.last_move = check_move
+            new_pos += 1
+        self.update_screen()
+
+    def update_screen(self):
             self.ecran.fill((255, 255, 255))
             self.ecran.blit(self.echiquier, self.echiquier.get_rect())
 
@@ -198,7 +241,7 @@ class Echiquier:
         return obj
 
 
-def nouvelle_partie():
+def nouvelle_partie(sid):
     """
     This is where we create a new game.
 
@@ -206,7 +249,7 @@ def nouvelle_partie():
     """
     pygame.init()                                # Initialisation du moteur de jeu pygame
     ecran = pygame.display.set_mode((680, 680))  # On cree une fenetre de 680 pixel par 680 pixels
-    pygame.display.set_caption("Echecs")         # Le titre de la fenetre s'appelle Echecs
+    pygame.display.set_caption("Echecs : " + sid)         # Le titre de la fenetre s'appelle Echecs
 
     echiquier = pygame.Surface((680, 680))       # On definit une surface a l'ecran pour representer l'echiquier
     echiquier.fill((175, 141, 120))              # Que l'on peint en marron (uni) voici le RGB(175, 141, 120)
